@@ -1,39 +1,51 @@
-﻿using System;
-using System.Net;
-using System.Threading;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using SocketTest1.Models;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace SocketTest1
 {
     class Program
     {
-        static void Main(string[] args)
+        private static IHostBuilder HostBuilder
         {
-            int socketServerPort = 0;
-            const int DEFAULT_PORT = 3333;
-            Console.WriteLine("Type the port number that you want to listen:");
-            do
+            get
             {
-                string portString = Console.ReadLine();
-                if (string.IsNullOrWhiteSpace(portString))
-                {
-                    socketServerPort = DEFAULT_PORT;
-                    break;
-                }
+                var config
+                    = new ConfigurationBuilder()
+                        .SetBasePath(Directory.GetCurrentDirectory())
+                        .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                        .AddEnvironmentVariables()
+                        .Build();
 
-                if (!int.TryParse(portString, out int _port))
-                {
-                    Console.WriteLine("invalid entry, try again");
-                    continue;
-                }
+                var hostBuilder
+                    = Host.CreateDefaultBuilder()
+                            .ConfigureServices((context, serviceCollection) =>
+                            {
+                                XSettingsModel xSettingsModel = new XSettingsModel();
+                                var appSettingsXSettingsSection = config.GetSection("X");
+                                appSettingsXSettingsSection.Bind(xSettingsModel);
 
-                socketServerPort = _port;
+                                #region Options
+                                serviceCollection.AddOptions();
+                                serviceCollection.Configure<XSettingsModel>(appSettingsXSettingsSection);
+                                #endregion
+
+                                serviceCollection
+                                    .AddHostedService<SocketServerBackgroundService>()
+                                    .AddSingleton<ISocketServer, SocketServer>();
+                            });
+
+                return hostBuilder;
             }
-            while (socketServerPort == 0);
+        }
 
-            SocketServer.Start(IPAddress.Any, socketServerPort);
-
-            Console.WriteLine("Press enter to exit...");
-            Console.ReadLine();
+        static async Task Main(string[] args)
+        {
+            var host = HostBuilder.Build();
+            await host.RunAsync();
         }
     }
 }
